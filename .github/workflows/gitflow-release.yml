@@ -1,0 +1,109 @@
+name: Reusable Gitflow Release Workflow
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        description: 'Gitflow action to perform'
+        required: true
+        type: string
+      version:
+        description: 'Release version (for release-start and release-finish, e.g., 1.18.0)'
+        required: false
+        type: string
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '8'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      runs-on:
+        description: 'Runner OS'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+jobs:
+  gitflow-release:
+    runs-on: ${{ inputs.runs-on }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Fetch all branches
+      run: git fetch --all
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: ${{ inputs.java-distribution }}
+        cache: maven
+    
+    - name: Configure Git
+      run: |
+        git config user.name "${{ github.actor }}"
+        git config user.email "${{ github.actor }}@users.noreply.github.com"
+    
+    - name: Release Start
+      if: inputs.action == 'release-start'
+      run: |
+        if [ -z "${{ inputs.version }}" ]; then
+          mvn gitflow:release-start -B -ntp -DargLine="-B -ntp"
+        else
+          mvn gitflow:release-start -B -ntp -DreleaseVersion=${{ inputs.version }} -DargLine="-B -ntp"
+        fi
+    
+    - name: Release Finish
+      if: inputs.action == 'release-finish'
+      run: |
+        if [ -n "${{ inputs.version }}" ]; then
+          RELEASE_BRANCH="release/${{ inputs.version }}"
+          echo "Using provided version: ${{ inputs.version }}"
+          echo "Checking for release branch: $RELEASE_BRANCH"
+          
+          # Check if the release branch exists and checkout
+          if git show-ref --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH"; then
+            echo "Found remote release branch: $RELEASE_BRANCH"
+            git checkout "$RELEASE_BRANCH"
+          elif git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH"; then
+            echo "Found local release branch: $RELEASE_BRANCH"
+            git checkout "$RELEASE_BRANCH"
+          else
+            echo "Error: Release branch '$RELEASE_BRANCH' not found!"
+            echo "Available remote branches:"
+            git branch -r | grep release/ || echo "No release branches found"
+            exit 1
+          fi
+          
+          mvn gitflow:release-finish -B -ntp -DpushRemote=true -DreleaseVersion=${{ inputs.version }} -DargLine="-B -ntp"
+        else
+          # Check if there's exactly one release branch
+          RELEASE_BRANCHES=$(git branch -r | grep -E "origin/release/" | sed 's/.*origin\///' || true)
+          RELEASE_COUNT=$(echo "$RELEASE_BRANCHES" | grep -c "release/" || echo "0")
+          
+          if [ "$RELEASE_COUNT" -eq 1 ]; then
+            RELEASE_BRANCH=$(echo "$RELEASE_BRANCHES" | head -n1)
+            VERSION=$(echo "$RELEASE_BRANCH" | sed 's/^release\///')
+            echo "Auto-detected single release branch: $RELEASE_BRANCH"
+            echo "Using version: $VERSION"
+            git checkout "$RELEASE_BRANCH"
+            mvn gitflow:release-finish -B -ntp -DpushRemote=true -DreleaseVersion=$VERSION -DargLine="-B -ntp"
+          elif [ "$RELEASE_COUNT" -gt 1 ]; then
+            echo "Error: Multiple release branches found. Please specify the version."
+            echo "Found release branches:"
+            echo "$RELEASE_BRANCHES" | sed 's/^/  - /'
+            exit 1
+          else
+            echo "Error: No release branches found and no version specified."
+            echo "Please provide the version number (e.g., 1.18.0)"
+            exit 1
+          fi
+        fi

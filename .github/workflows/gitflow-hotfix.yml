@@ -1,0 +1,82 @@
+name: Reusable Gitflow Hotfix Workflow
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        description: 'Gitflow action to perform'
+        required: true
+        type: string
+      version:
+        description: 'Hotfix version (e.g., 1.17.1)'
+        required: true
+        type: string
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '8'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      runs-on:
+        description: 'Runner OS'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+jobs:
+  gitflow-hotfix:
+    runs-on: ${{ inputs.runs-on }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Fetch all branches
+      run: git fetch --all
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: ${{ inputs.java-distribution }}
+        cache: maven
+    
+    - name: Configure Git
+      run: |
+        git config user.name "${{ github.actor }}"
+        git config user.email "${{ github.actor }}@users.noreply.github.com"
+    
+    - name: Hotfix Start
+      if: inputs.action == 'hotfix-start'
+      run: |
+        echo "Starting hotfix version: ${{ inputs.version }}"
+        mvn gitflow:hotfix-start -B -ntp -DhotfixVersion=${{ inputs.version }} -DargLine="-B -ntp"
+    
+    - name: Hotfix Finish
+      if: inputs.action == 'hotfix-finish'
+      run: |
+        HOTFIX_BRANCH="hotfix/${{ inputs.version }}"
+        echo "Finishing hotfix version: ${{ inputs.version }}"
+        echo "Checking for hotfix branch: $HOTFIX_BRANCH"
+        
+        # Check if the hotfix branch exists
+        if git show-ref --verify --quiet "refs/remotes/origin/$HOTFIX_BRANCH"; then
+          echo "Found remote hotfix branch: $HOTFIX_BRANCH"
+          git checkout "$HOTFIX_BRANCH"
+        elif git show-ref --verify --quiet "refs/heads/$HOTFIX_BRANCH"; then
+          echo "Found local hotfix branch: $HOTFIX_BRANCH"
+          git checkout "$HOTFIX_BRANCH"
+        else
+          echo "Error: Hotfix branch '$HOTFIX_BRANCH' not found!"
+          echo "Available remote branches:"
+          git branch -r | grep hotfix/ || echo "No hotfix branches found"
+          exit 1
+        fi
+        
+        mvn gitflow:hotfix-finish -B -ntp -DpushRemote=true -DhotfixVersion=${{ inputs.version }} -DargLine="-B -ntp"
