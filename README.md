@@ -1,6 +1,18 @@
-# Dataliquid GitHub Actions
+# dataliquid GitHub Actions
 
-This repository contains reusable GitHub Actions workflows for Dataliquid projects.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+This repository contains reusable GitHub Actions workflows for dataliquid projects.
+
+## Quick Start
+
+To quickly install the Gitflow workflows in your project, run:
+
+```bash
+curl -s https://raw.githubusercontent.com/dataliquid/github-actions/main/install-gitflow-workflows.sh | bash
+```
+
+This will download and install both gitflow-release and gitflow-hotfix workflows in your project.
 
 ## Available Workflows
 
